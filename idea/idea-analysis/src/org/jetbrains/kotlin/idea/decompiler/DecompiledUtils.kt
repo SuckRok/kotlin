@@ -17,8 +17,10 @@
 package org.jetbrains.kotlin.idea.decompiler
 
 import com.intellij.ide.highlighter.JavaClassFileType
+import com.intellij.openapi.util.Key
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.ClassFileViewProvider
+import org.jetbrains.kotlin.idea.caches.JarMetaInformationIndex
 import org.jetbrains.kotlin.load.java.JvmAnnotationNames.KotlinClass
 import org.jetbrains.kotlin.load.java.JvmAnnotationNames.KotlinSyntheticClass
 import org.jetbrains.kotlin.load.kotlin.KotlinBinaryClassCache
@@ -29,6 +31,10 @@ import org.jetbrains.kotlin.load.kotlin.header.KotlinClassHeader
  */
 public fun isKotlinJvmCompiledFile(file: VirtualFile): Boolean {
     if (file.getExtension() != JavaClassFileType.INSTANCE!!.getDefaultExtension()) {
+        return false
+    }
+
+    if (JarMetaInformationIndex.getValue(HasCompiledKotlinInJarMeta, file) == HasCompiledKotlinInJarMeta.JarKotlinState.NO_KOTLIN) {
         return false
     }
 
@@ -69,3 +75,23 @@ public fun isKotlinInternalCompiledFile(file: VirtualFile): Boolean {
 
 public fun isKotlinJavaScriptInternalCompiledFile(file: VirtualFile): Boolean =
         isKotlinJsMetaFile(file) && file.getNameWithoutExtension().contains('.')
+
+public object HasCompiledKotlinInJarMeta : JarMetaInformationIndex.JarMetaInformationCollector<HasCompiledKotlinInJarMeta.JarKotlinState> {
+    public enum class JarKotlinState {
+        HAS_KOTLIN,
+        NO_KOTLIN,
+        COUNTING
+    }
+
+    override val key = Key.create<HasCompiledKotlinInJarMeta.JarKotlinState>(HasCompiledKotlinInJarMeta::class.simpleName!!)
+    override val init = JarKotlinState.COUNTING
+    override val stopAt = JarKotlinState.HAS_KOTLIN
+
+    override fun count(result: JarKotlinState, nextFile: VirtualFile): JarKotlinState {
+        if (result == JarKotlinState.HAS_KOTLIN) return JarKotlinState.HAS_KOTLIN
+
+        return if (isKotlinJvmCompiledFile(nextFile)) JarKotlinState.HAS_KOTLIN else JarKotlinState.NO_KOTLIN
+    }
+
+    override fun countForSdkJar(file: VirtualFile): JarKotlinState = JarKotlinState.NO_KOTLIN
+}
