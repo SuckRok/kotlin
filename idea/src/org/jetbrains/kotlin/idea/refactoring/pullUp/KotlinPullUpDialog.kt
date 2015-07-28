@@ -55,21 +55,21 @@ public class KotlinPullUpDialog(
          * Classes do not have abstractness
          */
         override fun isAbstractEnabled(memberInfo: KotlinMemberInfo): Boolean {
-            val superClass = getSuperClass() ?: return false
+            val superClass = superClass ?: return false
             if (!superClass.isInterface()) return true
 
-            val member = memberInfo.getMember()
+            val member = memberInfo.member
             return member is JetNamedFunction || (member is JetProperty && !member.mustBeAbstractInInterface())
         }
 
         override fun isAbstractWhenDisabled(memberInfo: KotlinMemberInfo): Boolean {
-            return memberInfo.getMember() is JetProperty
+            return memberInfo.member is JetProperty
         }
 
         override fun isMemberEnabled(memberInfo: KotlinMemberInfo): Boolean {
-            val superClass = getSuperClass() ?: return false
+            val superClass = superClass ?: return false
             if (memberInfo in memberInfoStorage.getDuplicatedMemberInfos(superClass)) return false
-            if (memberInfo.getMember() in memberInfoStorage.getExtending(superClass)) return false
+            if (memberInfo.member in memberInfoStorage.getExtending(superClass)) return false
             return true
         }
     }
@@ -78,16 +78,16 @@ public class KotlinPullUpDialog(
 
     protected val sourceClass: JetClassOrObject get() = myClass
 
-    override fun getDimensionServiceKey() = "#" + javaClass.getName()
+    override fun getDimensionServiceKey() = "#" + javaClass.name
 
     override fun getSuperClass() = super.getSuperClass() as? JetClass
 
     @suppress("WRONG_NUMBER_OF_TYPE_ARGUMENTS")
     override fun initClassCombo(classCombo: JComboBox) {
-        classCombo.setRenderer(JetClassOrObjectCellRenderer())
+        classCombo.renderer = JetClassOrObjectCellRenderer()
         classCombo.addItemListener { event: ItemEvent ->
-            if (event.getStateChange() == ItemEvent.SELECTED) {
-                myMemberSelectionPanel?.getTable()?.let {
+            if (event.stateChange == ItemEvent.SELECTED) {
+                myMemberSelectionPanel?.table?.let {
                     it.setMemberInfos(myMemberInfos)
                     it.fireExternalDataChange()
                 }
@@ -103,8 +103,8 @@ public class KotlinPullUpDialog(
             KotlinMemberSelectionTable(infos, null, "Make abstract")
 
     override fun doAction() {
-        val selectedMembers = getSelectedMemberInfos()
-        val targetClass = getSuperClass()!!
+        val selectedMembers = selectedMemberInfos
+        val targetClass = superClass!!
         checkConflicts(getProject(), sourceClass, targetClass, selectedMembers, { close(DialogWrapper.OK_EXIT_CODE) }) {
             invokeRefactoring(createProcessor(sourceClass, targetClass, selectedMembers))
         }
