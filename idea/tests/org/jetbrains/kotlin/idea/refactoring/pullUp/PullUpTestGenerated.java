@@ -113,6 +113,54 @@ public class PullUpTestGenerated extends AbstractPullUpTest {
         doTest(fileName);
     }
 
+    @TestMetadata("k2j/fromClassToClass.kt")
+    public void testK2j_FromClassToClass() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("idea/testData/refactoring/pullUp/k2j/fromClassToClass.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("k2j/fromClassToClassAndMakeAbstract.kt")
+    public void testK2j_FromClassToClassAndMakeAbstract() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("idea/testData/refactoring/pullUp/k2j/fromClassToClassAndMakeAbstract.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("k2j/fromClassToClassWithGenerics.kt")
+    public void testK2j_FromClassToClassWithGenerics() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("idea/testData/refactoring/pullUp/k2j/fromClassToClassWithGenerics.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("k2j/fromClassToInterface.kt")
+    public void testK2j_FromClassToInterface() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("idea/testData/refactoring/pullUp/k2j/fromClassToInterface.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("k2j/moveSuperInterfacesToClass.kt")
+    public void testK2j_MoveSuperInterfacesToClass() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("idea/testData/refactoring/pullUp/k2j/moveSuperInterfacesToClass.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("k2j/moveSuperInterfacesToInterface.kt")
+    public void testK2j_MoveSuperInterfacesToInterface() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("idea/testData/refactoring/pullUp/k2j/moveSuperInterfacesToInterface.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("k2j/publicToInterface.kt")
+    public void testK2j_PublicToInterface() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("idea/testData/refactoring/pullUp/k2j/publicToInterface.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("k2j/usedPrivateToClass.kt")
+    public void testK2j_UsedPrivateToClass() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("idea/testData/refactoring/pullUp/k2j/usedPrivateToClass.kt");
+        doTest(fileName);
+    }
+
     @TestMetadata("moveAllSuperInterfaces.kt")
     public void testMoveAllSuperInterfaces() throws Exception {
         String fileName = JetTestUtils.navigationMetadata("idea/testData/refactoring/pullUp/moveAllSuperInterfaces.kt");

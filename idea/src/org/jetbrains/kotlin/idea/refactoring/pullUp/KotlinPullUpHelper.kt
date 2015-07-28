@@ -18,6 +18,7 @@ package org.jetbrains.kotlin.idea.refactoring.pullUp
 
 import com.intellij.openapi.util.Key
 import com.intellij.psi.*
+import com.intellij.psi.codeStyle.JavaCodeStyleManager
 import com.intellij.psi.impl.light.LightField
 import com.intellij.psi.search.LocalSearchScope
 import com.intellij.psi.search.searches.ReferencesSearch
@@ -25,15 +26,22 @@ import com.intellij.refactoring.classMembers.MemberInfoBase
 import com.intellij.refactoring.memberPullUp.PullUpData
 import com.intellij.refactoring.memberPullUp.PullUpHelper
 import com.intellij.refactoring.util.RefactoringUtil
+import com.intellij.testFramework.LightVirtualFile
 import org.jetbrains.kotlin.asJava.getRepresentativeLightMethod
 import org.jetbrains.kotlin.asJava.namedUnwrappedElement
 import org.jetbrains.kotlin.asJava.toLightClass
+import org.jetbrains.kotlin.asJava.unwrapped
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.descriptors.*
+import org.jetbrains.kotlin.idea.JetFileType
 import org.jetbrains.kotlin.idea.JetLanguage
 import org.jetbrains.kotlin.idea.codeInsight.shorten.addToShorteningWaitSet
+import org.jetbrains.kotlin.idea.core.refactoring.createJavaField
+import org.jetbrains.kotlin.idea.core.refactoring.createJavaMethod
+import org.jetbrains.kotlin.idea.core.refactoring.toPsiFile
 import org.jetbrains.kotlin.idea.core.replaced
 import org.jetbrains.kotlin.idea.imports.importableFqName
+import org.jetbrains.kotlin.idea.refactoring.memberInfo.isAbstractMember
 import org.jetbrains.kotlin.idea.refactoring.safeDelete.removeOverrideModifier
 import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.idea.util.IdeDescriptorRenderers
@@ -62,6 +70,7 @@ class KotlinPullUpHelper(
         private val data: KotlinPullUpData
 ) : PullUpHelper<MemberInfoBase<PsiMember>> {
     companion object {
+        private var JetElement.originalDeclaration: JetNamedDeclaration? by CopyableUserDataProperty(Key.create("ORIGINAL_DECLARATION"))
         private var JetElement.newFqName: FqName? by CopyableUserDataProperty(Key.create("NEW_FQ_NAME"))
         private var JetElement.replaceWithTargetThis: Boolean? by CopyableUserDataProperty(Key.create("REPLACE_WITH_TARGET_THIS"))
         private var JetElement.newTypeText: String? by CopyableUserDataProperty(Key.create("NEW_TYPE_TEXT"))
@@ -175,7 +184,7 @@ class KotlinPullUpHelper(
             }
         }
         commonInitializer?.accept(visitor)
-        if (targetConstructor == data.targetClass.getPrimaryConstructor() ?: data.targetClass) {
+        if (targetConstructor == (data.targetClass as? JetClass)?.getPrimaryConstructor() ?: data.targetClass) {
             property.initializer?.accept(visitor)
         }
 
@@ -192,7 +201,7 @@ class KotlinPullUpHelper(
     }
 
     private val targetToSourceConstructors = LinkedHashMap<JetElement, MutableList<JetElement>>().let { result ->
-        if (!data.targetClass.isInterface()) {
+        if (!data.isInterfaceTarget && data.targetClass is JetClass) {
             result[data.targetClass.getPrimaryConstructor() ?: data.targetClass] = ArrayList<JetElement>()
             data.sourceClass.accept(
                     object : JetTreeVisitorVoid() {
@@ -244,9 +253,27 @@ class KotlinPullUpHelper(
         result
     }
 
+
+    private val membersToCopies: Map<JetNamedDeclaration, JetNamedDeclaration> by lazy {
+        data.membersToMove.forEach { it.originalDeclaration = it }
+        val sourceFile = data.sourceClass.getContainingJetFile()
+        val dummyFileText = sourceFile.packageDirective?.let { "${it.text}\n" } ?: ""
+        val dummyFile = LightVirtualFile("dummy.kt", JetFileType.INSTANCE, dummyFileText).toPsiFile(sourceFile.project) as JetFile
+        val sourceClassCopy = dummyFile.add(data.sourceClass) as JetClassOrObject
+
+        val result = LinkedHashMap<JetNamedDeclaration, JetNamedDeclaration>()
+        sourceClassCopy.declarations.forEach { copy ->
+            copy.originalDeclaration?.let { original ->
+                original.originalDeclaration = null
+                result[original] = copy as JetNamedDeclaration
+            }
+        }
+        result
+    }
+
     private var dummyField: PsiField? = null
 
-    private fun addMovedMember(newMember: JetNamedDeclaration) {
+    private fun addMovedMember(newMember: PsiNamedElement) {
         if (newMember is JetProperty) {
             // Add dummy light field since PullUpProcessor won't invoke moveFieldInitializations() if no PsiFields are present
             if (dummyField == null) {
@@ -270,6 +297,10 @@ class KotlinPullUpHelper(
             is JetClassOrObject -> {
                 newMember.toLightClass()?.let { javaData.movedMembers.add(it) }
             }
+            is PsiField -> {} // to stop JavaPullUpHelper from moving field initializers
+            is PsiMember -> {
+                javaData.movedMembers.add(newMember)
+            }
         }
     }
 
@@ -287,7 +318,7 @@ class KotlinPullUpHelper(
     override fun setCorrectVisibility(info: MemberInfoBase<PsiMember>) {
         val member = info.member.namedUnwrappedElement as? JetNamedDeclaration ?: return
 
-        if (data.targetClass.isInterface()) {
+        if (data.isInterfaceTarget) {
             member.removeModifier(JetTokens.PUBLIC_KEYWORD)
             return
         }
@@ -332,7 +363,7 @@ class KotlinPullUpHelper(
     }
 
     private fun makeAbstract(sourceMember: JetCallableDeclaration, targetMember: JetCallableDeclaration) {
-        if (!data.targetClass.isInterface()) {
+        if (!data.isInterfaceTarget) {
             targetMember.addModifierWithSpace(JetTokens.ABSTRACT_KEYWORD)
         }
 
@@ -372,20 +403,32 @@ class KotlinPullUpHelper(
         }
     }
 
-    private fun addMemberToTarget(targetMember: JetNamedDeclaration): JetNamedDeclaration {
-        val anchor = data.targetClass.declarations.filterIsInstance(targetMember.javaClass).lastOrNull()
-        val movedMember = when {
-            anchor == null && targetMember is JetProperty -> data.targetClass.addDeclarationBefore(targetMember, null)
-            else -> data.targetClass.addDeclarationAfter(targetMember, anchor)
+    private fun addMemberToTarget(targetMember: JetNamedDeclaration): PsiNamedElement? {
+        return when (data.targetClass) {
+            is JetClass -> {
+                val anchor = data.targetClass.declarations.filterIsInstance(targetMember.javaClass).lastOrNull()
+                val movedMember = when {
+                    anchor == null && targetMember is JetProperty -> data.targetClass.addDeclarationBefore(targetMember, null)
+                    else -> data.targetClass.addDeclarationAfter(targetMember, anchor)
+                }
+                movedMember as JetNamedDeclaration
+            }
+            is PsiClass -> {
+                when (targetMember) {
+                    is JetNamedFunction -> createJavaMethod(targetMember, data.targetClass)
+                    is JetProperty -> createJavaField(targetMember, data.targetClass)
+                    else -> null
+                }
+            }
+            else -> null
         }
-        return movedMember as JetNamedDeclaration
     }
 
-    private fun doAddCallableMember(memberCopy: JetCallableDeclaration, clashingSuper: JetCallableDeclaration?): JetCallableDeclaration {
+    private fun doAddCallableMember(memberCopy: JetCallableDeclaration, clashingSuper: JetCallableDeclaration?): PsiNamedElement? {
         if (clashingSuper != null && clashingSuper.hasModifier(JetTokens.ABSTRACT_KEYWORD)) {
             return clashingSuper.replaced(memberCopy)
         }
-        return addMemberToTarget(memberCopy) as JetCallableDeclaration
+        return addMemberToTarget(memberCopy)
     }
 
     private fun markElements(member: JetNamedDeclaration): List<JetElement> {
@@ -504,16 +547,20 @@ class KotlinPullUpHelper(
     }
 
     // TODO: Formatting rules don't apply here for some reason
-    private fun JetNamedDeclaration.addModifierWithSpace(modifier: JetModifierKeywordToken) {
-        addModifier(modifier)
-        addAfter(JetPsiFactory(this).createWhiteSpace(), modifierList)
+    private fun PsiNamedElement.addModifierWithSpace(modifier: JetModifierKeywordToken) {
+        when (this) {
+            is JetNamedDeclaration -> {
+                addModifier(modifier)
+                addAfter(JetPsiFactory(this).createWhiteSpace(), modifierList)
+            }
+            is PsiMember -> {
+                modifierList?.setModifierProperty(PsiModifier.ABSTRACT, true)
+            }
+        }
     }
 
-    private fun moveSuperInterface(member: JetClass) {
-        val psiFactory = JetPsiFactory(member)
-
+    private fun moveSuperInterface(member: JetClass, sourceToTargetJavaSubstitutor: PsiSubstitutor) {
         val classDescriptor = data.memberDescriptors[member] as? ClassDescriptor ?: return
-
         val currentSpecifier =
                 data.sourceClass.getDelegationSpecifiers()
                         .filterIsInstance<JetDelegatorToSuperClass>()
@@ -521,14 +568,33 @@ class KotlinPullUpHelper(
                             val referencedType = data.sourceClassContext[BindingContext.TYPE, it.typeReference]
                             referencedType?.constructor?.declarationDescriptor == classDescriptor
                         } ?: return
-        data.sourceClass.removeDelegationSpecifier(currentSpecifier)
+        when (data.targetClass) {
+            is JetClass -> {
+                if (DescriptorUtils.isSubclass(data.targetClassDescriptor, classDescriptor)) return
 
-        if (!DescriptorUtils.isSubclass(data.targetClassDescriptor, classDescriptor)) {
-            val referencedType = data.sourceClassContext[BindingContext.TYPE, currentSpecifier.typeReference]!!
-            val typeInTargetClass = data.sourceToTargetClassSubstitutor.substitute(referencedType, Variance.INVARIANT)
-            if (typeInTargetClass != null && !typeInTargetClass.isError) {
+                val referencedType = data.sourceClassContext[BindingContext.TYPE, currentSpecifier.typeReference]!!
+                val typeInTargetClass = data.sourceToTargetClassSubstitutor.substitute(referencedType, Variance.INVARIANT)
+                if (!(typeInTargetClass != null && !typeInTargetClass.isError)) return
+
                 val renderedType = IdeDescriptorRenderers.SOURCE_CODE.renderType(typeInTargetClass)
-                data.targetClass.addDelegationSpecifier(psiFactory.createDelegatorToSuperClass(renderedType)).addToShorteningWaitSet()
+                val newSpecifier = JetPsiFactory(member).createDelegatorToSuperClass(renderedType)
+                data.targetClass.addDelegationSpecifier(newSpecifier).addToShorteningWaitSet()
+            }
+
+            // todo: use PsiSubstitutor
+            is PsiClass -> {
+                val sourcePsiClass = data.sourceClass.toLightClass() ?: return
+                val superRef = sourcePsiClass.implementsList
+                                       ?.referenceElements
+                                       ?.firstOrNull { it.resolve()?.unwrapped == member }
+                                ?: return
+                data.sourceClass.removeDelegationSpecifier(currentSpecifier)
+
+                if (DescriptorUtils.isSubclass(data.targetClassDescriptor, classDescriptor)) return
+
+                val elementFactory = JavaPsiFacade.getElementFactory(member.project)
+                val refList = if (data.isInterfaceTarget) data.targetClass.extendsList else data.targetClass.implementsList
+                refList?.add(elementFactory.createReferenceFromText(superRef.canonicalText, null))
             }
         }
 
@@ -537,32 +603,37 @@ class KotlinPullUpHelper(
 
     override fun move(info: MemberInfoBase<PsiMember>, substitutor: PsiSubstitutor) {
         val member = info.member.namedUnwrappedElement as? JetNamedDeclaration ?: return
+        val project = member.project
 
         if (member is JetClass && info.overrides != null)  {
-            moveSuperInterface(member)
+            moveSuperInterface(member, substitutor)
             return
         }
 
-        val markedElements = markElements(member)
-        val memberCopy = member.copy() as JetNamedDeclaration
+        if (data.targetClass is PsiClass && !member.canMoveMemberToJavaClass(data.targetClass)) return
 
-        fun moveClassMember(member: JetClassOrObject, memberCopy: JetClassOrObject): JetClassOrObject {
-            if (data.targetClass.isInterface()) {
+        val markedElements = markElements(member)
+        val memberCopy = membersToCopies[member] ?: return
+
+        fun moveClassMember(member: JetClassOrObject, memberCopy: JetClassOrObject): PsiNamedElement? {
+            if (data.isInterfaceTarget) {
                 memberCopy.removeModifier(JetTokens.INNER_KEYWORD)
             }
-            val movedMember = addMemberToTarget(memberCopy) as JetClassOrObject
+
+            val movedMember = addMemberToTarget(memberCopy)
             member.delete()
             return movedMember
         }
 
-        fun moveCallableMember(member: JetCallableDeclaration, memberCopy: JetCallableDeclaration): JetCallableDeclaration {
-            val movedMember: JetCallableDeclaration
+        fun moveCallableMember(member: JetCallableDeclaration, memberCopy: JetCallableDeclaration): PsiNamedElement? {
+            val movedMember: PsiNamedElement?
             val clashingSuper = fixOverrideAndGetClashingSuper(member, memberCopy)
 
             val originalIsAbstract = member.hasModifier(JetTokens.ABSTRACT_KEYWORD)
             val toAbstract = when {
+                data.targetClass is PsiClass -> member is JetNamedFunction
                 info.isToAbstract -> true
-                !data.targetClass.isInterface() -> false
+                !data.isInterfaceTarget -> false
                 member is JetProperty -> member.mustBeAbstractInInterface()
                 else -> false
             }
@@ -573,8 +644,9 @@ class KotlinPullUpHelper(
 
                 movedMember = doAddCallableMember(memberCopy, clashingSuper)
                 if (member.typeReference == null) {
-                    movedMember.typeReference?.addToShorteningWaitSet()
+                    (movedMember as? JetCallableDeclaration)?.typeReference?.addToShorteningWaitSet()
                 }
+
                 if (originalIsAbstract) {
                     member.delete()
                 }
@@ -587,13 +659,13 @@ class KotlinPullUpHelper(
                 member.delete()
             }
 
-            if (originalIsAbstract && data.targetClass.isInterface()) {
-                movedMember.removeModifier(JetTokens.ABSTRACT_KEYWORD)
+            if (originalIsAbstract && data.isInterfaceTarget) {
+                (movedMember as? JetCallableDeclaration)?.removeModifier(JetTokens.ABSTRACT_KEYWORD)
             }
 
-            if (!data.targetClass.isInterface()
-                && !data.targetClass.hasModifier(JetTokens.ABSTRACT_KEYWORD)
-                && (movedMember.hasModifier(JetTokens.ABSTRACT_KEYWORD))) {
+            if (!data.isInterfaceTarget
+                && !data.targetClass.isAbstractMember()
+                && (movedMember?.isAbstractMember() ?: false)) {
                 data.targetClass.addModifierWithSpace(JetTokens.ABSTRACT_KEYWORD)
             }
             return movedMember
@@ -606,8 +678,18 @@ class KotlinPullUpHelper(
                 else -> return
             }
 
-            processMarkedElements(movedMember)
-            addMovedMember(movedMember)
+            when (movedMember) {
+                is JetNamedDeclaration -> {
+                    processMarkedElements(movedMember)
+                }
+                is PsiMember -> {
+                    JavaCodeStyleManager.getInstance(project).shortenClassReferences(movedMember)
+                }
+            }
+
+            if (movedMember != null) {
+                addMovedMember(movedMember)
+            }
         }
         finally {
             clearMarking(markedElements)
@@ -619,6 +701,8 @@ class KotlinPullUpHelper(
     }
 
     override fun moveFieldInitializations(movedFields: LinkedHashSet<PsiField>) {
+        if (data.targetClass is PsiClass) return
+
         val psiFactory = JetPsiFactory(data.sourceClass)
 
         fun JetClassOrObject.getOrCreateClassInitializer(): JetClassInitializer {

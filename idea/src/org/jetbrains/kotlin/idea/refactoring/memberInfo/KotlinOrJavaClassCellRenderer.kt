@@ -17,17 +17,28 @@
 package org.jetbrains.kotlin.idea.refactoring.memberInfo
 
 import com.intellij.openapi.util.Iconable
+import com.intellij.psi.PsiClass
+import com.intellij.psi.PsiNamedElement
 import com.intellij.ui.ListCellRendererWrapper
 import org.jetbrains.kotlin.psi.JetClassOrObject
+import org.jetbrains.kotlin.psi.psiUtil.getElementTextWithContext
 import javax.swing.JList
 
-public class JetClassOrObjectCellRenderer: ListCellRendererWrapper<JetClassOrObject>() {
-    override fun customize(list: JList, value: JetClassOrObject?, index: Int, selected: Boolean, hasFocus: Boolean) {
+public class KotlinOrJavaClassCellRenderer : ListCellRendererWrapper<PsiNamedElement>() {
+    override fun customize(list: JList, value: PsiNamedElement?, index: Int, selected: Boolean, hasFocus: Boolean) {
         if (value == null) return
 
-        setText(value.qualifiedNameForRendering())
+        setText(value.qualifiedClassNameForRendering())
         value.getIcon(Iconable.ICON_FLAG_VISIBILITY or Iconable.ICON_FLAG_READ_STATUS)?.let { setIcon(it) }
     }
 }
 
-public fun JetClassOrObject.qualifiedNameForRendering(): String = getFqName()?.asString() ?: getName() ?: "[Anonymous]"
+// Applies to JetClassOrObject and PsiClass
+public fun PsiNamedElement.qualifiedClassNameForRendering(): String {
+    val fqName = when (this) {
+        is JetClassOrObject -> getFqName()?.asString()
+        is PsiClass -> getQualifiedName()
+        else -> throw AssertionError("Not a class: ${getElementTextWithContext()}")
+    }
+    return fqName ?: getName() ?: "[Anonymous]"
+}

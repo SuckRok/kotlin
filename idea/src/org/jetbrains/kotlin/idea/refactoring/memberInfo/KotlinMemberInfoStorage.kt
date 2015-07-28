@@ -16,12 +16,17 @@
 
 package org.jetbrains.kotlin.idea.refactoring.memberInfo
 
+import com.intellij.psi.PsiClass
+import com.intellij.psi.PsiMember
+import com.intellij.psi.PsiNamedElement
 import com.intellij.refactoring.classMembers.AbstractMemberInfoStorage
-import org.jetbrains.kotlin.descriptors.ClassDescriptor
-import org.jetbrains.kotlin.descriptors.ClassKind
-import org.jetbrains.kotlin.descriptors.FunctionDescriptor
-import org.jetbrains.kotlin.descriptors.PropertyDescriptor
+import com.intellij.refactoring.util.classMembers.MemberInfo
+import com.intellij.refactoring.util.classMembers.MemberInfoStorage
+import org.jetbrains.kotlin.asJava.toLightClass
+import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
+import org.jetbrains.kotlin.idea.caches.resolve.getJavaClassDescriptor
+import org.jetbrains.kotlin.idea.caches.resolve.getJavaMemberDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptor
 import org.jetbrains.kotlin.idea.codeInsight.DescriptorToSourceUtilsIde
 import org.jetbrains.kotlin.psi.*
@@ -33,9 +38,9 @@ import org.jetbrains.kotlin.types.typeUtil.immediateSupertypes
 import java.util.ArrayList
 
 public class KotlinMemberInfoStorage(
-        classOrObject: JetClassOrObject,
+        classOrObject: PsiNamedElement,
         filter: (JetNamedDeclaration) -> Boolean = { true }
-): AbstractMemberInfoStorage<JetNamedDeclaration, JetClassOrObject, KotlinMemberInfo>(classOrObject, filter) {
+): AbstractMemberInfoStorage<JetNamedDeclaration, PsiNamedElement, KotlinMemberInfo>(classOrObject, filter) {
     override fun memberConflict(member1: JetNamedDeclaration, member: JetNamedDeclaration): Boolean {
         val descriptor1 = member1.resolveToDescriptor()
         val descriptor = member.resolveToDescriptor()
@@ -51,24 +56,27 @@ public class KotlinMemberInfoStorage(
         }
     }
 
-    override fun buildSubClassesMap(aClass: JetClassOrObject) {
-        val classDescriptor = aClass.resolveToDescriptor() as ClassDescriptor
+    override fun buildSubClassesMap(aClass: PsiNamedElement) {
+        val classDescriptor = aClass.getClassDescriptorIfAny() ?: return
         val classType = classDescriptor.getDefaultType()
         for (supertype in classType.immediateSupertypes()) {
-            val superClass = supertype.getConstructor().getDeclarationDescriptor()?.getSource()?.getPsi() as? JetClassOrObject
-                             ?: continue
-            getSubclasses(superClass).add(aClass)
-            buildSubClassesMap(superClass)
+            val superClass = supertype.getConstructor().getDeclarationDescriptor()?.getSource()?.getPsi()
+            if (superClass is JetClass || superClass is PsiClass) {
+                getSubclasses(superClass as PsiNamedElement).add(aClass)
+                buildSubClassesMap(superClass)
+            }
         }
     }
 
-    override fun isInheritor(baseClass: JetClassOrObject, aClass: JetClassOrObject): Boolean {
-        val baseDescriptor = baseClass.resolveToDescriptor() as ClassDescriptor
-        val currentDescriptor = aClass.resolveToDescriptor() as ClassDescriptor
+    override fun isInheritor(baseClass: PsiNamedElement, aClass: PsiNamedElement): Boolean {
+        val baseDescriptor = baseClass.getClassDescriptorIfAny() ?: return false
+        val currentDescriptor = aClass.getClassDescriptorIfAny() ?: return false
         return DescriptorUtils.isSubclass(currentDescriptor, baseDescriptor)
     }
 
-    override fun extractClassMembers(aClass: JetClassOrObject, temp: ArrayList<KotlinMemberInfo>) {
+    override fun extractClassMembers(aClass: PsiNamedElement, temp: ArrayList<KotlinMemberInfo>) {
+        if (aClass !is JetClassOrObject) return
+
         val context = aClass.analyze()
         aClass.getDeclarations()
                 .filter { it is JetNamedDeclaration
