@@ -82,9 +82,10 @@ public class KotlinPullUpDialog(
 
     override fun getSuperClass() = super.getSuperClass() as? JetClass
 
+    @suppress("WRONG_NUMBER_OF_TYPE_ARGUMENTS")
     override fun initClassCombo(classCombo: JComboBox) {
         classCombo.setRenderer(JetClassOrObjectCellRenderer())
-        classCombo.addItemListener { event ->
+        classCombo.addItemListener { event: ItemEvent ->
             if (event.getStateChange() == ItemEvent.SELECTED) {
                 myMemberSelectionPanel?.getTable()?.let {
                     it.setMemberInfos(myMemberInfos)
