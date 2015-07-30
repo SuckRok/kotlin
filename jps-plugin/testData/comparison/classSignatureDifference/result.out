@@ -1,0 +1,4 @@
+changes in test/ClassWithClassAnnotationListChanged: CLASS_SIGNATURE
+changes in test/ClassWithFlagsChanged: CLASS_SIGNATURE
+changes in test/ClassWithSuperTypeListChanged: CLASS_SIGNATURE
+changes in test/ClassWithTypeParameterListChanged: CLASS_SIGNATURE
