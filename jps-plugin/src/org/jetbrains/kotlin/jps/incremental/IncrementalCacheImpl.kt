@@ -16,6 +16,7 @@
 
 package org.jetbrains.kotlin.jps.incremental
 
+import com.google.protobuf.InvalidProtocolBufferException
 import com.intellij.util.io.*
 import org.jetbrains.annotations.TestOnly
 import org.jetbrains.jps.builders.BuildTarget
@@ -40,7 +41,7 @@ import org.jetbrains.kotlin.load.kotlin.incremental.components.IncrementalCache
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.resolve.jvm.JvmClassName
 import org.jetbrains.kotlin.serialization.Flags
-import org.jetbrains.kotlin.serialization.ProtoBuf
+import org.jetbrains.kotlin.serialization.Interner
 import org.jetbrains.kotlin.serialization.deserialization.visibility
 import org.jetbrains.kotlin.serialization.jvm.BitEncoding
 import org.jetbrains.kotlin.serialization.jvm.JvmProtoBufUtil
@@ -48,9 +49,7 @@ import org.jetbrains.kotlin.utils.Printer
 import org.jetbrains.org.objectweb.asm.*
 import java.io.*
 import java.security.MessageDigest
-import java.util.ArrayList
-import java.util.Arrays
-import java.util.HashMap
+import java.util.*
 
 val INLINE_ANNOTATION_DESC = "Lkotlin/inline;"
 
@@ -641,56 +640,133 @@ private val storageProvider = object : StorageProvider<IncrementalCacheImpl>() {
     }
 }
 
+public sealed class DifferenceKind() {
+    public object NONE: DifferenceKind()
+    public object CLASS_SIGNATURE: DifferenceKind()
+    public class MEMBERS(val names: Collection<String>): DifferenceKind()
+}
+
 public fun BuildDataPaths.getKotlinCacheVersion(target: BuildTarget<*>): CacheFormatVersion = CacheFormatVersion(getTargetDataRoot(target))
 
 public fun BuildDataManager.getKotlinCache(target: BuildTarget<*>): IncrementalCacheImpl = getStorage(target, storageProvider)
 
-public fun isClassOpenPartNotChanged(oldData: ByteArray, newData: ByteArray): Boolean {
-    val oldClassData = JvmProtoBufUtil.readClassDataFrom(oldData)
-    val newClassData = JvmProtoBufUtil.readClassDataFrom(newData)
+public fun ProtoBufClass.removePrivatePart(): ProtoBufClass =
+    copy(
+            memberList = memberList.filter { !it.isPrivate() },
+            secondaryConstructorList = secondaryConstructorList.filter { !it.isPrivate() },
+            primaryConstructor = if (primaryConstructor?.data?.isPrivate() ?: false) null else primaryConstructor
+    )
 
-    val compareObject = object : ProtoCompareGenerated(oldClassData.nameResolver, newClassData.nameResolver) {
-        override fun checkEqualsClassMember(old: ProtoBuf.Class, new: ProtoBuf.Class): Boolean =
-                checkEquals(old.memberList, new.memberList)
-
-        override fun checkEqualsClassSecondaryConstructor(old: ProtoBuf.Class, new: ProtoBuf.Class): Boolean =
-                checkEquals(old.secondaryConstructorList, new.secondaryConstructorList)
-
-        private fun checkEquals(oldList: List<ProtoBuf.Callable>, newList: List<ProtoBuf.Callable>): Boolean {
-            val oldListFiltered = oldList.filter { !it.isPrivate() }
-            val newListFiltered = newList.filter { !it.isPrivate() }
-
-            if (oldListFiltered.size() != newListFiltered.size()) return false
-
-            for (i in oldListFiltered.indices) {
-                if (!checkEquals(oldListFiltered[i], newListFiltered[i])) return false
-            }
-
-            return true
-        }
-
-        private fun ProtoBuf.Callable.isPrivate(): Boolean = Visibilities.isPrivate(visibility(Flags.VISIBILITY.get(flags)))
-    }
-
-    return compareObject.checkEquals(oldClassData.classProto, newClassData.classProto)
+public fun ByteArray.toProtoBufClass(enumerate: (String) -> Int): ProtoBufClass {
+    val classData = JvmProtoBufUtil.readClassDataFrom(this)
+    return classData.classProto.toDataClass(classData.nameResolver, enumerate)
 }
 
-private fun isOpenPartNotChanged(oldData: ByteArray, newData: ByteArray, isPackageFacade: Boolean): Boolean {
-    if (isPackageFacade) {
-        return isPackageFacadeOpenPartNotChanged(oldData, newData)
+public fun ByteArray.toProtoBufPackage(enumerate: (String) -> Int): ProtoBufPackage {
+    val packageData = JvmProtoBufUtil.readPackageDataFrom(this)
+    return packageData.packageProto.toDataClass(packageData.nameResolver, enumerate)
+}
+
+public fun getDifference(oldData: ByteArray, newData: ByteArray, newIsPackageFacade: Boolean): DifferenceKind {
+    if (newIsPackageFacade) {
+        return getDifferenceForPackageFacade(oldData, newData)
     }
     else {
-        return isClassOpenPartNotChanged(oldData, newData)
+        return getDifferenceForClass(oldData, newData)
     }
 }
 
-private fun isPackageFacadeOpenPartNotChanged(oldData: ByteArray, newData: ByteArray): Boolean {
-    val oldPackageData = JvmProtoBufUtil.readPackageDataFrom(oldData)
-    val newPackageData = JvmProtoBufUtil.readPackageDataFrom(newData)
+public fun getDifferenceForClass(oldData: ByteArray, newData: ByteArray): DifferenceKind {
+    val strings = Interner<String>()
 
-    val compareObject = ProtoCompareGenerated(oldPackageData.nameResolver, newPackageData.nameResolver)
-    return compareObject.checkEquals(oldPackageData.packageProto, newPackageData.packageProto)
+    val oldClass = try { oldData.toProtoBufClass { strings.intern(it) }.removePrivatePart() } catch(e: InvalidProtocolBufferException) { null }
+    if (oldClass == null) return DifferenceKind.CLASS_SIGNATURE
+
+    val newClass = newData.toProtoBufClass { strings.intern(it) }.removePrivatePart()
+
+    val diff = oldClass.differenceTo(newClass)
+
+    if (diff.isEmpty()) return DifferenceKind.NONE
+
+
+    CLASS_SIGNATURE_ENUMS.forEach { if (it in diff) return DifferenceKind.CLASS_SIGNATURE }
+
+    val listOfNames = strings.allInternedObjects
+
+    val members = hashSetOf<String>()
+    for (kind in diff) {
+        when (kind!!) {
+            ProtoBufClass.Kind.COMPANION_OBJECT_NAME -> {
+                if (oldClass.companionObjectName != null) {
+                    members.add(listOfNames[oldClass.companionObjectName])
+                }
+                if (newClass.companionObjectName != null) {
+                    members.add(listOfNames[newClass.companionObjectName])
+                }
+            }
+            ProtoBufClass.Kind.NESTED_CLASS_NAME_LIST -> {
+                symmetricDifference(oldClass.nestedClassNameList.toSet(), newClass.nestedClassNameList.toSet()).forEach { members.add(listOfNames[it]) }
+            }
+            ProtoBufClass.Kind.MEMBER_LIST -> {
+                symmetricDifference(oldClass.memberList.toSet(), newClass.memberList.toSet()).forEach { members.add(listOfNames[it.name]) }
+            }
+            ProtoBufClass.Kind.ENUM_ENTRY_LIST -> {
+                symmetricDifference(oldClass.enumEntryList.toSet(), newClass.enumEntryList.toSet()).forEach { members.add(listOfNames[it]) }
+            }
+            ProtoBufClass.Kind.PRIMARY_CONSTRUCTOR, ProtoBufClass.Kind.SECONDARY_CONSTRUCTOR_LIST -> members.add("<init>")
+        }
+    }
+
+    return DifferenceKind.MEMBERS(members)
 }
+
+public fun getDifferenceForPackageFacade(oldData: ByteArray, newData: ByteArray): DifferenceKind {
+    val strings = Interner<String>()
+
+    val oldClass = try { oldData.toProtoBufPackage { strings.intern(it) } } catch(e: InvalidProtocolBufferException) { null }
+    if (oldClass == null) return DifferenceKind.CLASS_SIGNATURE
+
+    val newClass = newData.toProtoBufPackage { strings.intern(it) }
+
+    val diff = oldClass.differenceTo(newClass)
+
+    if (diff.isEmpty()) return DifferenceKind.NONE
+
+    val listOfNames = strings.allInternedObjects
+
+    val members = hashSetOf<String>()
+    for (kind in diff) {
+        when (kind!!) {
+            ProtoBufPackage.Kind.MEMBER_LIST -> {
+                symmetricDifference(oldClass.memberList.toSet(), newClass.memberList.toSet()).forEach { members.add(listOfNames[it.name]) }
+            }
+        }
+    }
+
+    return DifferenceKind.MEMBERS(members)
+}
+
+private fun <E> symmetricDifference(old: Set<E>, new: Set<E>): Set<E> {
+    val intersection = HashSet<E>(old)
+    intersection.retainAll(new)
+    val result = HashSet<E>(old)
+    result.addAll(new)
+    result.removeAll(intersection)
+    return result
+}
+
+private fun isOpenPartNotChanged(oldData: ByteArray, newData: ByteArray, newIsPackageFacade: Boolean) =
+    getDifference(oldData, newData, newIsPackageFacade) == DifferenceKind.NONE
+
+private val CLASS_SIGNATURE_ENUMS = EnumSet.of(
+        ProtoBufClass.Kind.FLAGS,
+        ProtoBufClass.Kind.FQ_NAME,
+        ProtoBufClass.Kind.TYPE_PARAMETER_LIST,
+        ProtoBufClass.Kind.SUPERTYPE_LIST,
+        ProtoBufClass.Kind.CLASS_ANNOTATION_LIST
+)
+
+private fun ProtoBufCallable.isPrivate(): Boolean = Visibilities.isPrivate(visibility(Flags.VISIBILITY.get(flags!!)))
 
 private fun ByteArray.md5(): Long {
     val d = MessageDigest.getInstance("MD5").digest(this)!!
