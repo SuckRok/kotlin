@@ -29,14 +29,16 @@ import org.jetbrains.kotlin.idea.util.application.runReadAction
 import java.util.ArrayList
 
 public object JarMetaInformationIndex : ScalarIndexExtension<Int>() {
-    override fun dependsOnFileContent(): Boolean = true
+    override fun dependsOnFileContent(): Boolean = false
     override fun getKeyDescriptor() = ExternalIntegerKeyDescriptor()
     override fun getName(): ID<Int, Void> = ID.create<Int, Void>(JarMetaInformationIndex::class.qualifiedName)
     override fun getVersion(): Int = 0
 
     override fun getInputFilter() = FileBasedIndex.InputFilter() {
-        file: VirtualFile -> file.getUrl().startsWith("jar://") && file.getExtension() == "jar"
+        file: VirtualFile -> file.getUrl().startsWith("jar://") && file.getUrl().endsWith("!/")
     }
+
+    override fun indexDirectories(): Boolean = true
 
     private val collectors: MutableList<JarMetaInformationCollector<*>> = ArrayList()
 
@@ -50,11 +52,8 @@ public object JarMetaInformationIndex : ScalarIndexExtension<Int>() {
         val jarFile = findJarFile(inputData.getFile())
         if (jarFile != null) {
             collectors.forEach { collector ->
-                val data = jarFile.getUserData(collector.key)
-                if (data != null && data != collector.init) {
-                    // println("Clear: $jarFile ${jarFile.hashCode()} $collector")
-                    jarFile.putUserData(collector.key, null)
-                }
+//                println("Canceled: $jarFile ${jarFile.hashCode()} $collector")
+                jarFile.putUserData(collector.key, null)
             }
         }
 
