@@ -33,13 +33,21 @@ private constructor(
 
     companion object {
         @platformStatic
-        @jvmOverloads
         public fun create(annotations: Annotations,
                           constructor: TypeConstructor,
                           nullable: Boolean,
                           arguments: List<TypeProjection>,
-                          memberScope: JetScope,
-                          substitution: TypeSubstitution? = null): JetTypeImpl
+                          memberScope: JetScope): JetTypeImpl
+
+                = JetTypeImpl(annotations, constructor, nullable, arguments, null, memberScope)
+
+        @platformStatic
+        public fun create(annotations: Annotations,
+                          constructor: TypeConstructor,
+                          nullable: Boolean,
+                          arguments: List<TypeProjection>,
+                          substitution: TypeSubstitution,
+                          memberScope: JetScope): JetTypeImpl
 
                 = JetTypeImpl(annotations, constructor, nullable, arguments, substitution, memberScope)
 
