@@ -131,6 +131,12 @@ public class BasicCompletionWeigherTestGenerated extends AbstractBasicCompletion
         doTest(fileName);
     }
 
+    @TestMetadata("PreferMatchingExpectedType.kt")
+    public void testPreferMatchingExpectedType() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("idea/idea-completion/testData/weighers/basic/PreferMatchingExpectedType.kt");
+        doTest(fileName);
+    }
+
     @TestMetadata("PropertiesBeforeKeywords.kt")
     public void testPropertiesBeforeKeywords() throws Exception {
         String fileName = JetTestUtils.navigationMetadata("idea/idea-completion/testData/weighers/basic/PropertiesBeforeKeywords.kt");
@@ -141,6 +147,21 @@ public class BasicCompletionWeigherTestGenerated extends AbstractBasicCompletion
     public void testReturnBoolean() throws Exception {
         String fileName = JetTestUtils.navigationMetadata("idea/idea-completion/testData/weighers/basic/ReturnBoolean.kt");
         doTest(fileName);
+    }
+
+    @TestMetadata("idea/idea-completion/testData/weighers/basic/expectedInfo")
+    @TestDataPath("$PROJECT_ROOT")
+    @RunWith(JUnit3RunnerWithInners.class)
+    public static class ExpectedInfo extends AbstractBasicCompletionWeigherTest {
+        public void testAllFilesPresentInExpectedInfo() throws Exception {
+            JetTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("idea/idea-completion/testData/weighers/basic/expectedInfo"), Pattern.compile("^([^\\.]+)\\.kt$"), true);
+        }
+
+        @TestMetadata("ExpectedType.kt")
+        public void testExpectedType() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("idea/idea-completion/testData/weighers/basic/expectedInfo/ExpectedType.kt");
+            doTest(fileName);
+        }
     }
 
     @TestMetadata("idea/idea-completion/testData/weighers/basic/parameterNameAndType")
