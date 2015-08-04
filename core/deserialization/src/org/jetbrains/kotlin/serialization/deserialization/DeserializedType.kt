@@ -51,7 +51,7 @@ class DeserializedType(
 
     override fun getAnnotations(): Annotations = annotations
 
-    override fun getCapabilities() = c.components.annotationAndConstantLoader.loadTypeCapabilities(typeProto)
+    override fun getCapabilities() = c.components.typeCapabilitiesLoader.loadCapabilities(typeProto)
 
     private fun <E: Any> List<E>.getOrNull(index: Int): E? {
         return if (index in indices) this[index] else null
