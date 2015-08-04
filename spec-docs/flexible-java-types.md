@@ -69,8 +69,13 @@ k(int[]) = IntArray
 Raw Java types (see https://docs.oracle.com/javase/specs/jls/se8/html/jls-4.html#jls-4.8 for clarification) are loaded as usual flexible types with special arguments projections.
 
 ```
-Raw(G<T1>..F<T2>) = (G<ErasedUpperBound(T1)>..F<out ErasedUpperBound(T2)>) // T1 and T2 have invariant or `out` variance
+Raw(G<T1>..F<T2>) = (G<ErasedUpperBound(T1)>..F<out ErasedUpperBound(T2)>) // T1 and T2 have invariant or `out` variance.
+                                                                           // notation: (G)F<(erased) ErasedUpperBound(T1)>!
+
 Raw(G<T1>..F<T2>) = (G<ErasedUpperBound(T1)>..F<Nothing>) // T1 and T2 have `in` variance
+
+Raw(G..F) = (G..F) // G and F types built on constructors without type parameters
+                   // notation: [Raw](G)F
 ```
 
 where `G<T1>..F<T2>` is initially loaded flexible type with yet unsubstituted type parameters.
@@ -90,13 +95,13 @@ that should be handled properly, e.g. by loading such ErasedUpperBound as Error 
 Examples:
 
 ```
-Raw(java.util.concurrent.Future) = (Future<Any!>..Future<out Any!>?)
-Raw(java.util.Collection) = (MutableCollection<Any?>..Collection<out Any?>?)
+Raw(java.util.concurrent.Future) = (Future<Any!>..Future<out Any!>?)         // notation: Future<(erased) Any!>!
+Raw(java.util.Collection) = (MutableCollection<Any?>..Collection<out Any?>?) // notation: (Mutable)Collection<(erased) Any?>!
 
 class A<T extends CharSequence> {}
-Raw(A) = (A<CharSequence!>..A<out CharSequence>)
+Raw(A) = (A<CharSequence!>..A<out CharSequence>?) // notation: A<(erased) CharSequence!>!
 
-Raw(java.lang.Enum) = (Enum<Enum<*>>..Enum<out Enum<*>>?)
+Raw(java.lang.Enum) = (Enum<Enum<*>!>..Enum<out Enum<*>!>?) // notation: Enum<(erased) Enum<*>!>!
 ```
 
 Also raw types have special types of contained members, each of them is replaced with it's JVM erasure representation:
@@ -105,7 +110,10 @@ Also raw types have special types of contained members, each of them is replaced
 Erase(T) = Erase(UpperBound(T)) // T is a type variable
 Erase(Array<t>) = Array<Erase(t)>
 Erase(G<t>) = Raw(G<T>) // G<t> is a type constructed with argument t mapped onto parameter T
-Erase(A) = A // A is a type constructor without parameters
+Erase(A) = Raw(A) // A is a type constructor without parameters
+                  // NOTE: Later rule needed for proper erasure inside member scope of A
+                  // E.g. if A has property with type `Foo<String>``
+                  // then it becomes `Foo<(erased) Any!>` inside Erase(A)
 ```
 
 ## Overriding

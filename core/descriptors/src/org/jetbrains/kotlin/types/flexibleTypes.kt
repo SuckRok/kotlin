@@ -18,6 +18,7 @@ package org.jetbrains.kotlin.types
 
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.renderer.DescriptorRenderer
 import org.jetbrains.kotlin.types.checker.JetTypeChecker
 import kotlin.platform.platformStatic
 
@@ -103,6 +104,11 @@ public fun JetType.upperIfFlexible(): JetType = if (this.isFlexible()) this.flex
 public interface NullAwareness : TypeCapability {
     public fun makeNullableAsSpecified(nullable: Boolean): JetType
     public fun computeIsNullable(): Boolean
+}
+
+public interface CustomFlexibleRendering : TypeCapability {
+    public fun postProcessInflexible(type: JetType, rendered: String): String?
+    public fun render(flexibility: Flexibility, renderer: DescriptorRenderer): Pair<String, String>?
 }
 
 interface FlexibleTypeDelegation : TypeCapability {

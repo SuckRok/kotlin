@@ -20,6 +20,7 @@ import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.TypeParameterDescriptor
 import org.jetbrains.kotlin.load.java.components.TypeUsage
+import org.jetbrains.kotlin.renderer.DescriptorRenderer
 import org.jetbrains.kotlin.types.*
 
 public object RawTypeCapabilities : TypeCapabilities {
@@ -27,10 +28,46 @@ public object RawTypeCapabilities : TypeCapabilities {
         override val substitution = RawSubstitution
     }
 
+    private object RawFlexibleRendering : CustomFlexibleRendering {
+        private fun DescriptorRenderer.renderArguments(jetType: JetType) = jetType.arguments.map { renderTypeProjection(it) }
+
+        private fun String.replaceArgs(newArgs: String): String {
+            if (!contains('<')) return this
+            return "${substringBefore('<')}<$newArgs>${substringAfterLast('>')}"
+        }
+
+        override fun postProcessInflexible(type: JetType, rendered: String) =
+                if (type.arguments.isEmpty())
+                    "[Raw]$rendered"
+                else rendered
+
+        override fun render(flexibility: Flexibility, renderer: DescriptorRenderer): Pair<String, String>? {
+            val lowerArgs = renderer.renderArguments(flexibility.lowerBound)
+            val upperArgs = renderer.renderArguments(flexibility.upperBound)
+
+            val lowerRendered = renderer.renderType(flexibility.lowerBound)
+            val upperRendered = renderer.renderType(flexibility.upperBound)
+
+            if (upperArgs.isNotEmpty()) {
+                val newArgs = lowerArgs.map { "(erased) $it" }.join(", ")
+                val newUpper =
+                        if (lowerArgs.zip(upperArgs).all { onlyOutDiffers(it.first, it.second) })
+                            upperRendered.replaceArgs(newArgs)
+                        else upperRendered
+                return Pair(lowerRendered.replaceArgs(newArgs), newUpper)
+            }
+
+            return null
+        }
+
+        private fun onlyOutDiffers(first: String, second: String) = first == second.removePrefix("out ") || second == "*"
+    }
+
     override fun <T : TypeCapability> getCapability(capabilityClass: Class<T>): T? {
         @suppress("UNCHECKED_CAST")
         return when(capabilityClass) {
             javaClass<CustomSubstitutionCapability>() -> RawSubstitutionCapability as T
+            javaClass<CustomFlexibleRendering>() -> RawFlexibleRendering as T
             else -> null
         }
     }

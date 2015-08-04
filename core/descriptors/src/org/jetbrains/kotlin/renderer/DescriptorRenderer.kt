@@ -36,6 +36,8 @@ public interface DescriptorRenderer : Renderer<DeclarationDescriptor> {
 
     public fun renderTypeArguments(typeArguments: List<TypeProjection>): String
 
+    public fun renderTypeProjection(typeProjection: TypeProjection): String
+
     public fun renderClassifierName(klass: ClassifierDescriptor): String
 
     public fun renderAnnotation(annotation: AnnotationDescriptor): String
