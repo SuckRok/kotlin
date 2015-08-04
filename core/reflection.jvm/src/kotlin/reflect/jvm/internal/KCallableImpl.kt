@@ -18,6 +18,7 @@ package kotlin.reflect.jvm.internal
 
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor
 import org.jetbrains.kotlin.descriptors.annotations.Annotated
+import java.lang.reflect.Type
 import java.util.ArrayList
 import kotlin.reflect.KCallable
 import kotlin.reflect.KParameter
@@ -28,6 +29,13 @@ interface KCallableImpl<out R> : KCallable<R>, KAnnotatedElementImpl {
 
     val caller: FunctionCaller
 
+    // TODO: cache this property
+    val javaParameterTypes: List<Type>
+        get() = caller.parameterTypes
+
+    val javaReturnType: Type
+        get() = caller.returnType
+
     override val annotated: Annotated get() = descriptor
 
     override val parameters: List<KParameter>
@@ -36,15 +44,15 @@ interface KCallableImpl<out R> : KCallable<R>, KAnnotatedElementImpl {
             var index = 0
 
             if (descriptor.dispatchReceiverParameter != null) {
-                result.add(KParameterImpl(index++) { descriptor.dispatchReceiverParameter!! })
+                result.add(KParameterImpl(this, index++) { descriptor.dispatchReceiverParameter!! })
             }
 
             if (descriptor.extensionReceiverParameter != null) {
-                result.add(KParameterImpl(index++) { descriptor.extensionReceiverParameter!! })
+                result.add(KParameterImpl(this, index++) { descriptor.extensionReceiverParameter!! })
             }
 
             for (i in descriptor.valueParameters.indices) {
-                result.add(KParameterImpl(index++) { descriptor.valueParameters[i] })
+                result.add(KParameterImpl(this, index++) { descriptor.valueParameters[i] })
             }
 
             result.trimToSize()
@@ -52,7 +60,7 @@ interface KCallableImpl<out R> : KCallable<R>, KAnnotatedElementImpl {
         }
 
     override val returnType: KType
-        get() = KTypeImpl(descriptor.returnType!!)
+        get() = KTypeImpl(descriptor.returnType!!) { javaReturnType }
 
     @suppress("UNCHECKED_CAST")
     override fun call(vararg args: Any?): R = reflectionCall {

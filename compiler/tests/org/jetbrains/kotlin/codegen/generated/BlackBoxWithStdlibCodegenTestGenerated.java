@@ -3359,6 +3359,45 @@ public class BlackBoxWithStdlibCodegenTestGenerated extends AbstractBlackBoxCode
                 String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithStdlib/reflection/mapping/topLevelProperty.kt");
                 doTestWithStdlib(fileName);
             }
+
+            @TestMetadata("compiler/testData/codegen/boxWithStdlib/reflection/mapping/types")
+            @TestDataPath("$PROJECT_ROOT")
+            @RunWith(JUnit3RunnerWithInners.class)
+            public static class Types extends AbstractBlackBoxCodegenTest {
+                public void testAllFilesPresentInTypes() throws Exception {
+                    JetTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/boxWithStdlib/reflection/mapping/types"), Pattern.compile("^(.+)\\.kt$"), true);
+                }
+
+                @TestMetadata("array.kt")
+                public void testArray() throws Exception {
+                    String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithStdlib/reflection/mapping/types/array.kt");
+                    doTestWithStdlib(fileName);
+                }
+
+                @TestMetadata("functionParametersAndReturnType.kt")
+                public void testFunctionParametersAndReturnType() throws Exception {
+                    String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithStdlib/reflection/mapping/types/functionParametersAndReturnType.kt");
+                    doTestWithStdlib(fileName);
+                }
+
+                @TestMetadata("overrideAnyWithPrimitive.kt")
+                public void testOverrideAnyWithPrimitive() throws Exception {
+                    String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithStdlib/reflection/mapping/types/overrideAnyWithPrimitive.kt");
+                    doTestWithStdlib(fileName);
+                }
+
+                @TestMetadata("typeParameters.kt")
+                public void testTypeParameters() throws Exception {
+                    String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithStdlib/reflection/mapping/types/typeParameters.kt");
+                    doTestWithStdlib(fileName);
+                }
+
+                @TestMetadata("unit.kt")
+                public void testUnit() throws Exception {
+                    String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithStdlib/reflection/mapping/types/unit.kt");
+                    doTestWithStdlib(fileName);
+                }
+            }
         }
 
         @TestMetadata("compiler/testData/codegen/boxWithStdlib/reflection/methodsFromAny")
