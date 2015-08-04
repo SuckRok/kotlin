@@ -93,6 +93,10 @@ class KClassImpl<T : Any>(override val jClass: Class<T>) : KCallableContainerImp
             KFunctionImpl(this, it) as KFunction<T>
         }
 
+    // TODO: should go through descriptors
+    override val nestedClasses: Collection<KClass<*>>
+        get() = jClass.declaredClasses.filter { it.simpleName.isNullOrEmpty().not() }.map { KClassImpl(it) }
+
     @suppress("UNCHECKED_CAST")
     override val objectInstance: T? by ReflectProperties.lazy {
         val descriptor = descriptor
