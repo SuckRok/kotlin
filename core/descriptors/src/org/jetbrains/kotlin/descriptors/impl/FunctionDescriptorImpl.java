@@ -27,9 +27,9 @@ import org.jetbrains.kotlin.types.DescriptorSubstitutor;
 import org.jetbrains.kotlin.types.JetType;
 import org.jetbrains.kotlin.types.TypeSubstitutor;
 import org.jetbrains.kotlin.types.Variance;
+import org.jetbrains.kotlin.utils.SmartHashSet;
 
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -41,7 +41,7 @@ public abstract class FunctionDescriptorImpl extends DeclarationDescriptorNonRoo
     private ReceiverParameterDescriptor dispatchReceiverParameter;
     private Modality modality;
     private Visibility visibility = Visibilities.UNKNOWN;
-    private final Set<FunctionDescriptor> overriddenFunctions = new LinkedHashSet<FunctionDescriptor>(); // LinkedHashSet is essential here
+    private final Set<FunctionDescriptor> overriddenFunctions = new SmartHashSet<FunctionDescriptor>();
     private final FunctionDescriptor original;
     private final Kind kind;
 

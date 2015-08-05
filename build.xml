@@ -646,6 +646,10 @@
                 <assertions>
                     <enable/>
                 </assertions>
+<!--
+                <jvmarg value="-agentpath:/Applications/YourKit.app/Contents/Resources/bin/mac/libyjpagent.jnilib"/>
+                <jvmarg value="-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5005"/>
+-->
                 <arg value="${kotlin-home}/lib/kotlin-compiler.jar"/>
                 <arg value="org.jetbrains.kotlin.cli.jvm.K2JVMCompiler"/>
                 <arg line="4096 notime"/>

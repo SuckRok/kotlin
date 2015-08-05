@@ -28,8 +28,12 @@ import org.jetbrains.kotlin.types.DescriptorSubstitutor;
 import org.jetbrains.kotlin.types.JetType;
 import org.jetbrains.kotlin.types.TypeSubstitutor;
 import org.jetbrains.kotlin.types.Variance;
+import org.jetbrains.kotlin.utils.SmartHashSet;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
 
 import static org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilPackage.getBuiltIns;
 
@@ -37,7 +41,7 @@ public class PropertyDescriptorImpl extends VariableDescriptorImpl implements Pr
     private final Modality modality;
     private Visibility visibility;
     private final boolean isVar;
-    private final Set<PropertyDescriptor> overriddenProperties = new LinkedHashSet<PropertyDescriptor>(); // LinkedHashSet is essential here
+    private final Set<PropertyDescriptor> overriddenProperties = new SmartHashSet<PropertyDescriptor>();
     private final PropertyDescriptor original;
     private final Kind kind;
 

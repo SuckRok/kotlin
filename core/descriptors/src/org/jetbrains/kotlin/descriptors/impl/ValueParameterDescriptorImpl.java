@@ -23,9 +23,9 @@ import org.jetbrains.kotlin.descriptors.annotations.Annotations;
 import org.jetbrains.kotlin.name.Name;
 import org.jetbrains.kotlin.types.JetType;
 import org.jetbrains.kotlin.types.TypeSubstitutor;
+import org.jetbrains.kotlin.utils.SmartHashSet;
 
 import java.util.Collections;
-import java.util.LinkedHashSet;
 import java.util.Set;
 
 public class ValueParameterDescriptorImpl extends VariableDescriptorImpl implements ValueParameterDescriptor {
@@ -34,9 +34,8 @@ public class ValueParameterDescriptorImpl extends VariableDescriptorImpl impleme
     private final JetType varargElementType;
     private final int index;
     private final ValueParameterDescriptor original;
-    private final Set<ValueParameterDescriptor> overriddenDescriptors = new LinkedHashSet<ValueParameterDescriptor>(); // Linked is essential
+    private final Set<ValueParameterDescriptor> overriddenDescriptors = new SmartHashSet<ValueParameterDescriptor>();
     private boolean overriddenDescriptorsLocked = false;
-    private final Set<? extends ValueParameterDescriptor> readOnlyOverriddenDescriptors = Collections.unmodifiableSet(overriddenDescriptors);
 
     public ValueParameterDescriptorImpl(
             @NotNull CallableDescriptor containingDeclaration,
@@ -146,7 +145,7 @@ public class ValueParameterDescriptorImpl extends VariableDescriptorImpl impleme
     @NotNull
     @Override
     public Set<? extends ValueParameterDescriptor> getOverriddenDescriptors() {
-        return readOnlyOverriddenDescriptors;
+        return Collections.unmodifiableSet(overriddenDescriptors);
     }
 
     @Override
